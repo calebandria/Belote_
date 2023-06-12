@@ -6,8 +6,23 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include "card_piling.h"
 
 #define BUFFER_SIZE 1024
+
+void deserializeScarte(struct Scarte *scarte, char *buffer) {
+    memcpy(&(scarte->valeur), buffer, sizeof(int));
+    memcpy(&(scarte->couleur), buffer + sizeof(int), sizeof(char));
+}
+
+void deserializePlayer(struct Player *player, char *buffer) {
+    memcpy(&(player->main), buffer, sizeof(int));
+    memcpy(&(player->jeuChoisi), buffer + sizeof(int), sizeof(int));
+    int numCartes = sizeof(struct Scarte);
+    for (int i = 0; i < numCartes; i++) {
+        deserializeScarte(&(player->cartes[i]), buffer + (2 * sizeof(int)) + (i * (sizeof(int) + sizeof(char))));
+    }
+}
 
 void *receiveThread(void *arg){
     int serverSocket = *(int *)arg;
@@ -28,6 +43,29 @@ void *receiveThread(void *arg){
     // Close the socket and exit the thread
     close(serverSocket);
     pthread_exit(NULL);
+}
+
+void *receiveStructure(void *arg){
+
+    Player receivedPlayer;
+    int serverSocket = *(int*) arg;
+    char buffer[sizeof(Player)];
+    
+    while(1){
+        ssize_t byteReceived = recv(serverSocket, buffer, sizeof(Player),0);
+
+        if(byteReceived <=0){
+            // server disconnected
+            printf("Server disconnected");
+            break;
+        }
+        deserializePlayer(&receivedPlayer, buffer);
+        displayCardForEachPlayer(receivedPlayer);
+    }   
+    
+    close(serverSocket);
+    pthread_exit(NULL); 
+
 }
 
 int main(int argc, char* argv[]) {
@@ -70,13 +108,17 @@ int main(int argc, char* argv[]) {
     printf("Connected to the server. Start chatting!\n");
 
     // Create a thread to receive messages from the server
-    if (pthread_create(&receiveThreadId, NULL, receiveThread, (void *)&serverSocket) != 0) {
+  /*   if (pthread_create(&receiveThreadId, NULL, receiveThread, (void *)&serverSocket) != 0) {
+        perror("Thread creation failed");
+        exit(EXIT_FAILURE);
+    } */
+       if (pthread_create(&receiveThreadId, NULL, receiveStructure, (void *)&serverSocket) != 0) {
         perror("Thread creation failed");
         exit(EXIT_FAILURE);
     }
 
     // Send messages to the server
-    char message[BUFFER_SIZE];
+  /*   char message[BUFFER_SIZE];
     while (1) {
         printf("You: ");
         fgets(message, BUFFER_SIZE, stdin);
@@ -91,7 +133,7 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
-
+ */
     // Wait for the receive thread to finish
     pthread_join(receiveThreadId, NULL);
 

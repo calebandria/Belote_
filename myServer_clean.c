@@ -1,3 +1,6 @@
+#ifndef MY_SERVER
+#define MY_SERVER
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,7 +15,69 @@
 #define MAX_CLIENTS 4
 #define BUFFER_SIZE 1024
 
-// Client thread function
+#include "myServer_clean.h"
+#include "card_piling.h"
+
+int clientSockets[MAX_CLIENTS];
+sem_t semaphore;
+
+void serializeScarte(Scarte scarte, char* buffer){
+    memcpy(buffer, &(scarte.valeur), sizeof(int));
+    memcpy(buffer + sizeof(int), &(scarte.couleur), sizeof(char));
+}
+
+void serializePlayer(Player player, char *buffer){
+    memcpy(buffer, &(player.main), sizeof(int));
+    memcpy(buffer + sizeof(int), &(player.jeuChoisi), sizeof(int));
+    int numCartes = sizeof(Scarte);
+    for(int i = 0; i < numCartes; i++){
+        serializeScarte(player.cartes[i], buffer + (2* sizeof(int)) + (i* (sizeof(int)+ sizeof(char))));
+    }
+}
+
+void *sendStructure(void *arg){
+    int clientSocket = *(int *)arg;
+
+// initialise chaque structure de joueur
+    Player players[MAX_CLIENTS];
+    Pile* pile;
+  /*   int playerHand;  */
+    Scarte *cardToPlay = playableCards();
+
+    shuffleCard(cardToPlay);
+    pile = malloc(sizeof(Pile));
+
+    //construction de la pile de 32 cartes
+    for(int i=0; i< CARD_NUMBER;i++){
+        empiler(pile, &(cardToPlay[i]));
+    }
+
+/*     Player *players = malloc(PLAYER_NUMBER*sizeof(Player)); */
+    players[0].main = true;
+
+    shareCards(pile, players, getIndexPlayerhand(players));
+    char buffer[sizeof(Player)];
+
+    sem_wait(&semaphore);
+    for(int i=0;i<MAX_CLIENTS;i++){
+        serializePlayer(players[i], buffer);
+        if(clientSockets[i]!=0){
+            ssize_t bytesSent = send(clientSockets[i],buffer, sizeof(Player),0);
+            if(bytesSent < 0){
+                perror("Send failed");
+                break;
+            }
+        }
+        
+    }
+    sem_post(&semaphore);
+
+    // close the socket and exit thread
+    close(clientSocket);
+    pthread_exit(NULL);
+    
+}
+
 void *clientThread(void *arg) {
     int clientSocket = *(int *)arg;
     while (1) {
@@ -54,16 +119,15 @@ void *clientThread(void *arg) {
     pthread_exit(NULL);
 }
 
-int main(int argc, char *argv[]) {
+int serverSocket(int argc, char* argv[]){
     if(argc < 2){
-        fprintf(stderr, "Port No not provided. Program terminated\n");
+        fprintf(stderr, "Port No not provided. Program terminated");
         exit(1);
     }
-    int serverSocket, clientSocket;
+    int serverSocket;
     int portno;
-    struct sockaddr_in serverAddress, clientAddress;
-    pthread_t clientThreads[MAX_CLIENTS];
-
+    struct sockaddr_in serverAddress;
+    
     // Create a server socket
     serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket < 0) {
@@ -102,28 +166,40 @@ int main(int argc, char *argv[]) {
 
     printf("Server started. Waiting for connections...\n");
 
+    return serverSocket;
+}
+
+void clientConnecting(int serverSocket){
+
+    int clientSocket;
+    pthread_t clientThreads[MAX_CLIENTS];
+    struct sockaddr_in clientAddress;
     // Accept incoming client connections and create client threads
     int clientCount = 0;
-    while (clientCount < MAX_CLIENTS) {
+
+    while (clientCount < MAX_CLIENTS){
         socklen_t clientAddressLength = sizeof(clientAddress);
         clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &clientAddressLength);
 
-        if (clientSocket < 0) {
+        if (clientSocket < 0){
             perror("Accept failed");
             exit(EXIT_FAILURE);
         }
-
         printf("Client %d connected: %s:%d\n",clientSocket-4, inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port));
-
-        // Acquire semaphore to access shared data
+         // Acquire semaphore to access shared data
         sem_wait(&semaphore);
-
+        printf("Do you work here?");
         // add the client socket to the list
         clientSockets[clientCount] = clientSocket;
         // relese semaphore
         sem_post(&semaphore);
         // Create a new client thread
-        if (pthread_create(&clientThreads[clientCount], NULL, clientThread, (void *)&clientSocket) != 0) {
+        /* if (pthread_create(&clientThreads[clientCount], NULL, clientThread, (void *)&clientSocket) != 0) {
+            perror("Thread creation failed");
+            exit(EXIT_FAILURE);
+        } */
+
+        if(pthread_create(&clientThreads[clientCount], NULL, sendStructure, (void *)&clientSocket) != 0){
             perror("Thread creation failed");
             exit(EXIT_FAILURE);
         }
@@ -141,6 +217,6 @@ int main(int argc, char *argv[]) {
 
     // Close the server socket
     close(serverSocket);
-
-    return 0;
 }
+
+#endif

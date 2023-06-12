@@ -134,12 +134,14 @@ void displayCardForAllPlayers(Player *players){
 }
 
 int getIndexPlayerhand(Player *players){
+    int handPlayerIndex = 0;
     for(int i=0; i<PLAYER_NUMBER; i++){
         if(players[i].main==true){
-            return i;
-            /* break; */
+            handPlayerIndex=i;
+            break;
         }
             
     }
+    return handPlayerIndex;
 }
 
