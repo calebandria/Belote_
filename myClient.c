@@ -46,22 +46,21 @@ void *receiveThread(void *arg){
 }
 
 void *receiveStructure(void *arg){
-
     Player receivedPlayer;
     int serverSocket = *(int*) arg;
     char buffer[sizeof(Player)];
     
-    while(1){
+    /* while(1){ */
         ssize_t byteReceived = recv(serverSocket, buffer, sizeof(Player),0);
 
         if(byteReceived <=0){
             // server disconnected
             printf("Server disconnected");
-            break;
+            /* break; */
         }
         deserializePlayer(&receivedPlayer, buffer);
         displayCardForEachPlayer(receivedPlayer);
-    }   
+   /*  }   */ 
     
     close(serverSocket);
     pthread_exit(NULL); 

@@ -18,8 +18,13 @@
 #include "myServer_clean.h"
 #include "card_piling.h"
 
+// shared resources
+
 int clientSockets[MAX_CLIENTS];
-sem_t semaphore;
+char buffer[sizeof(Player)];
+
+sem_t semForSockets;
+sem_t semForBuffer;
 
 void serializeScarte(Scarte scarte, char* buffer){
     memcpy(buffer, &(scarte.valeur), sizeof(int));
@@ -56,9 +61,9 @@ void *sendStructure(void *arg){
     players[0].main = true;
 
     shareCards(pile, players, getIndexPlayerhand(players));
-    char buffer[sizeof(Player)];
 
-    sem_wait(&semaphore);
+    sem_wait(&semForSockets);
+    sem_wait(&semForBuffer);
     for(int i=0;i<MAX_CLIENTS;i++){
         serializePlayer(players[i], buffer);
         if(clientSockets[i]!=0){
@@ -70,7 +75,8 @@ void *sendStructure(void *arg){
         }
         
     }
-    sem_post(&semaphore);
+    sem_post(&semForBuffer);
+    sem_post(&semForSockets);
 
     // close the socket and exit thread
     close(clientSocket);
@@ -89,9 +95,9 @@ void *clientThread(void *arg) {
             break;
         }
         
-        // Acquire semaphore to access shared data
-        sem_wait(&semaphore);
-       /*  printf("Waiting: %d", *semaphore); */
+        // Acquire semForSockets to access shared data
+        sem_wait(&semForSockets);
+       /*  printf("Waiting: %d", *semForSockets); */
 
         // Store the client's message in the shared data structure
 
@@ -109,9 +115,9 @@ void *clientThread(void *arg) {
             }
         }
 
-        // Release semaphore
-        sem_post(&semaphore);
-      /*   printf("Posting : %d", *semaphore); */
+        // Release semForSockets
+        sem_post(&semForSockets);
+      /*   printf("Posting : %d", *semForSockets); */
     }
 
     // Close the socket and exit the thread
@@ -158,13 +164,19 @@ int serverSocket(int argc, char* argv[]){
         exit(EXIT_FAILURE);
     }
 
-    // Initialize the semaphore
-    if (sem_init(&semaphore, 0, 1) != 0) {
-        perror("Semaphore initialization failed");
+    printf("Server started. Waiting for connections...\n");
+
+       // Initialize the semForSockets
+    if (sem_init(&semForSockets, 0, 1) != 0) {
+        perror("semForSockets initialization failed");
         exit(EXIT_FAILURE);
     }
+     // Initialize the semForBuffer
 
-    printf("Server started. Waiting for connections...\n");
+    if(sem_init(&semForBuffer, 0, 1)!=0){
+        perror("semForSockets initialization failed");
+        exit(EXIT_FAILURE);
+    }
 
     return serverSocket;
 }
@@ -180,29 +192,36 @@ void clientConnecting(int serverSocket){
     while (clientCount < MAX_CLIENTS){
         socklen_t clientAddressLength = sizeof(clientAddress);
         clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &clientAddressLength);
-
+        printf("is it accepted?");
         if (clientSocket < 0){
             perror("Accept failed");
             exit(EXIT_FAILURE);
         }
         printf("Client %d connected: %s:%d\n",clientSocket-4, inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port));
-         // Acquire semaphore to access shared data
-        sem_wait(&semaphore);
-        printf("Do you work here?");
+         // Acquire semForSockets to access shared data
+        sem_wait(&semForSockets);
+        
+        
         // add the client socket to the list
         clientSockets[clientCount] = clientSocket;
-        // relese semaphore
-        sem_post(&semaphore);
+        
+        // relese semForSockets
+        /* sem_post(&semForBuffer); */
+        sem_post(&semForBuffer);
+        printf("Do you work here?\n");
         // Create a new client thread
         /* if (pthread_create(&clientThreads[clientCount], NULL, clientThread, (void *)&clientSocket) != 0) {
             perror("Thread creation failed");
             exit(EXIT_FAILURE);
         } */
+        sem_wait(&semForBuffer);
 
         if(pthread_create(&clientThreads[clientCount], NULL, sendStructure, (void *)&clientSocket) != 0){
             perror("Thread creation failed");
             exit(EXIT_FAILURE);
         }
+        /* sem_wait(&semForBuffer); */
+        sem_post(&semForSockets);
 
         clientCount++;
     }
@@ -211,9 +230,10 @@ void clientConnecting(int serverSocket){
     for (int i = 0; i < MAX_CLIENTS; i++) {
         pthread_join(clientThreads[i], NULL);
     }
-
-    // Destroy the semaphore
-    sem_destroy(&semaphore);
+    
+    // Destroy the semForSockets
+    sem_destroy(&semForSockets);
+    sem_destroy(&semForBuffer);
 
     // Close the server socket
     close(serverSocket);
