@@ -47,20 +47,26 @@ void *receiveThread(void *arg){
 
 void *receiveStructure(void *arg){
     Player receivedPlayer;
+    printf("Receiver player created!\n");
     int serverSocket = *(int*) arg;
+    printf("Place to receive player established!\n");
     char buffer[sizeof(Player)];
+    printf("Buffer established!\n");
+    ssize_t totalBytesRead = 0;
+    ssize_t bytesRead;
     
-    /* while(1){ */
-        ssize_t byteReceived = recv(serverSocket, buffer, sizeof(Player),0);
-
-        if(byteReceived <=0){
+    while(totalBytesRead < sizeof(Player)){
+        bytesRead = recv(serverSocket, buffer + totalBytesRead, sizeof(Player) - totalBytesRead,0);
+        if(bytesRead <=0){
             // server disconnected
-            printf("Server disconnected");
-            /* break; */
+            printf("Receive failed");
+            break;
         }
+        totalBytesRead += bytesRead;
+  }   
         deserializePlayer(&receivedPlayer, buffer);
         displayCardForEachPlayer(receivedPlayer);
-   /*  }   */ 
+  
     
     close(serverSocket);
     pthread_exit(NULL); 
@@ -111,11 +117,12 @@ int main(int argc, char* argv[]) {
         perror("Thread creation failed");
         exit(EXIT_FAILURE);
     } */
-       if (pthread_create(&receiveThreadId, NULL, receiveStructure, (void *)&serverSocket) != 0) {
+    if (pthread_create(&receiveThreadId, NULL, receiveStructure, (void *)&serverSocket) != 0) {
         perror("Thread creation failed");
         exit(EXIT_FAILURE);
     }
 
+    printf("Thread created!\n");
     // Send messages to the server
   /*   char message[BUFFER_SIZE];
     while (1) {

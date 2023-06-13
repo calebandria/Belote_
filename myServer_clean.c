@@ -34,8 +34,8 @@ void serializeScarte(Scarte scarte, char* buffer){
 void serializePlayer(Player player, char *buffer){
     memcpy(buffer, &(player.main), sizeof(int));
     memcpy(buffer + sizeof(int), &(player.jeuChoisi), sizeof(int));
-    int numCartes = sizeof(Scarte);
-    for(int i = 0; i < numCartes; i++){
+ /*    int numCartes = sizeof(Scarte); */
+    for(int i = 0; i < CARDS_PLAYER; i++){
         serializeScarte(player.cartes[i], buffer + (2* sizeof(int)) + (i* (sizeof(int)+ sizeof(char))));
     }
 }
@@ -52,31 +52,40 @@ void *sendStructure(void *arg){
     shuffleCard(cardToPlay);
     pile = malloc(sizeof(Pile));
 
+
     //construction de la pile de 32 cartes
     for(int i=0; i< CARD_NUMBER;i++){
         empiler(pile, &(cardToPlay[i]));
     }
-
+    printf("Empilement done!\n");
 /*     Player *players = malloc(PLAYER_NUMBER*sizeof(Player)); */
     players[0].main = true;
 
     shareCards(pile, players, getIndexPlayerhand(players));
 
-    sem_wait(&semForSockets);
-    sem_wait(&semForBuffer);
+   /*  sem_wait(&semForSockets); */
+   /*  sem_wait(&semForBuffer); */
     for(int i=0;i<MAX_CLIENTS;i++){
+        sem_wait(&semForBuffer);
         serializePlayer(players[i], buffer);
+        printf("Serialized done!\n");
+        sem_wait(&semForSockets);
         if(clientSockets[i]!=0){
-            ssize_t bytesSent = send(clientSockets[i],buffer, sizeof(Player),0);
+            sleep(5);
+            ssize_t bytesSent = send(clientSockets[i],buffer, sizeof(int)+sizeof(int)+ (CARDS_PLAYER* (sizeof(int)+sizeof(char))),0);
+            printf("Sockets working?\n");
             if(bytesSent < 0){
                 perror("Send failed");
                 break;
             }
+            
         }
+        sem_post(&semForSockets);
+        
         
     }
     sem_post(&semForBuffer);
-    sem_post(&semForSockets);
+ /*    sem_post(&semForSockets); */
 
     // close the socket and exit thread
     close(clientSocket);
@@ -192,14 +201,14 @@ void clientConnecting(int serverSocket){
     while (clientCount < MAX_CLIENTS){
         socklen_t clientAddressLength = sizeof(clientAddress);
         clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &clientAddressLength);
-        printf("is it accepted?");
+        
         if (clientSocket < 0){
             perror("Accept failed");
             exit(EXIT_FAILURE);
         }
         printf("Client %d connected: %s:%d\n",clientSocket-4, inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port));
          // Acquire semForSockets to access shared data
-        sem_wait(&semForSockets);
+      /*   sem_wait(&semForSockets); */
         
         
         // add the client socket to the list
@@ -207,21 +216,22 @@ void clientConnecting(int serverSocket){
         
         // relese semForSockets
         /* sem_post(&semForBuffer); */
-        sem_post(&semForBuffer);
-        printf("Do you work here?\n");
+        /* sem_post(&semForBuffer); */
+        printf("Post buffer works here!\n");
         // Create a new client thread
         /* if (pthread_create(&clientThreads[clientCount], NULL, clientThread, (void *)&clientSocket) != 0) {
             perror("Thread creation failed");
             exit(EXIT_FAILURE);
-        } */
-        sem_wait(&semForBuffer);
+        } *//* 
+        sem_wait(&semForBuffer); */
 
         if(pthread_create(&clientThreads[clientCount], NULL, sendStructure, (void *)&clientSocket) != 0){
             perror("Thread creation failed");
             exit(EXIT_FAILURE);
         }
+        printf("Thread creation %d done\n", clientCount);
         /* sem_wait(&semForBuffer); */
-        sem_post(&semForSockets);
+       /*  sem_post(&semForSockets); */
 
         clientCount++;
     }
